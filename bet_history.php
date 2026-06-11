@@ -2,23 +2,21 @@
 require_once 'config.php';
 require_once 'functions.php';
 
-// ইউজার লগইন না থাকলে লগইন পেজে পাঠিয়ে দেবে
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
 $user_id = $_SESSION['user_id'];
-$current_balance = 0.00;
 
-// ইউজারের বর্তমান ব্যালেন্স আনা
+// Get User Balance
 $bal_sql = "SELECT balance FROM users WHERE id = ?";
 $bal_stmt = $conn->prepare($bal_sql);
 $bal_stmt->bind_param("i", $user_id);
 $bal_stmt->execute();
 $current_balance = $bal_stmt->get_result()->fetch_assoc()['balance'];
 
-// ডাটাবেস থেকে এই ইউজারের সব প্রেডিকশন হিস্ট্রি নিয়ে আসা
+// Get Prediction History
 $history_sql = "
     SELECT p.*, m.match_time, m.team1_score, m.team2_score, m.status as match_status,
            t1.name as team1_name, t2.name as team2_name
@@ -40,60 +38,75 @@ $history_result = $stmt_history->get_result();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bet History - Prediction Web</title>
+    <title>My Predictions - PredX</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { background-color: #0f172a; color: #f8fafc; font-family: 'Poppins', sans-serif; margin: 0; padding: 20px; }
-        .navbar { background-color: #1e293b; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px; margin-bottom: 40px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-        .navbar a { color: #3b82f6; text-decoration: none; font-weight: bold; }
-        .balance-badge { background-color: #334155; padding: 8px 15px; border-radius: 20px; font-size: 14px; font-weight: 600; color: #fbbf24; border: 1px solid #475569; }
+        :root { --bg-main: #0B0E14; --bg-card: #151A22; --bg-glass: rgba(21, 26, 34, 0.85); --accent-primary: #00E701; --accent-blue: #007BFF; --text-main: #FFFFFF; --text-muted: #8B94A3; --border-color: #242B38; }
+        body { background-color: var(--bg-main); color: var(--text-main); font-family: 'Inter', sans-serif; margin: 0; padding-bottom: 50px; background-image: radial-gradient(circle at 50% -20%, #1a2235, var(--bg-main) 60%); min-height: 100vh; }
         
-        .history-container { max-width: 1000px; margin: 0 auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3); }
-        .history-container h2 { color: #cbd5e1; margin-top: 0; border-bottom: 2px solid #334155; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        /* Navbar */
+        .navbar { background: var(--bg-glass); backdrop-filter: blur(15px); padding: 15px 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100; }
+        .navbar .back-btn { color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 16px; transition: 0.3s; }
+        .navbar .back-btn:hover { color: var(--text-main); }
+        .balance-badge { background: rgba(0, 231, 1, 0.1); padding: 8px 16px; border-radius: 30px; font-size: 15px; font-weight: 600; color: var(--accent-primary); border: 1px solid rgba(0, 231, 1, 0.3); }
+
+        .history-container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
+        .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 30px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px; }
+        .section-header h2 { margin: 0; font-size: 24px; font-weight: 800; color: var(--text-main); }
+        .section-header i { color: var(--accent-blue); font-size: 24px; }
         
-        /* Table Styles */
-        .table-responsive { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; min-width: 700px; }
-        th, td { padding: 15px; text-align: center; border-bottom: 1px solid #334155; }
-        th { background-color: #0f172a; color: #94a3b8; text-transform: uppercase; font-size: 13px; font-weight: bold; letter-spacing: 1px; }
-        td { font-size: 14px; vertical-align: middle; }
-        tr:hover { background-color: #334155; transition: 0.2s; }
+        /* Glassmorphism Table */
+        .table-responsive { overflow-x: auto; background: var(--bg-card); border-radius: 16px; border: 1px solid var(--border-color); box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        th, td { padding: 18px 20px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        th { background: rgba(0,0,0,0.2); color: var(--text-muted); font-weight: 800; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; }
+        td { font-size: 14px; font-weight: 600; }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+        tr:last-child td { border-bottom: none; }
         
-        .match-name { font-weight: bold; color: #e2e8f0; }
-        .match-date { display: block; font-size: 12px; color: #64748b; margin-top: 4px; }
+        .match-info .teams { display: block; font-size: 15px; color: var(--text-main); font-weight: 800; }
+        .match-info .date { display: block; font-size: 12px; color: var(--text-muted); margin-top: 5px; }
         
-        .score-box { background: #0f172a; padding: 5px 10px; border-radius: 6px; border: 1px solid #475569; font-weight: bold; font-family: monospace; font-size: 15px; }
-        .stake-amount { color: #fbbf24; font-weight: bold; }
+        .bet-market { font-size: 11px; text-transform: uppercase; background: rgba(0, 123, 255, 0.1); color: var(--accent-blue); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(0, 123, 255, 0.2); margin-bottom: 6px; display: inline-block; }
+        .bet-selection { display: block; font-size: 15px; color: var(--text-main); }
+
+        .score-badge { background: #0B0E14; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); font-family: monospace; font-size: 15px; color: var(--text-main); }
+        .stake-amt { color: #F59E0B; font-weight: 800; }
         
         /* Status Badges */
-        .badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
-        .badge-pending { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid #f59e0b; }
-        .badge-won { background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid #22c55e; }
-        .badge-lost { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; }
+        .status { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; text-transform: uppercase; display: inline-block; }
+        .s-pending { background: rgba(245, 158, 11, 0.1); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .s-won { background: rgba(0, 231, 1, 0.1); color: var(--accent-primary); border: 1px solid rgba(0, 231, 1, 0.3); }
+        .s-lost { background: rgba(255, 60, 60, 0.1); color: #FF3C3C; border: 1px solid rgba(255, 60, 60, 0.3); }
         
-        .points-earned { font-weight: bold; font-size: 15px; }
-        .text-green { color: #22c55e; }
-        .text-red { color: #ef4444; }
-        .text-gray { color: #94a3b8; }
+        .return-amt { font-size: 16px; font-weight: 800; }
+        .r-green { color: var(--accent-primary); }
+        .r-red { color: #FF3C3C; }
+        .r-gray { color: var(--text-muted); }
     </style>
 </head>
 <body>
 
-    <div class="navbar">
-        <a href="index.php">← Back to Feed</a>
-        <div class="balance-badge">🪙 <span><?php echo number_format($current_balance, 2); ?></span> Coins</div>
-    </div>
+    <nav class="navbar">
+        <a href="index.php" class="back-btn"><i class="fa-solid fa-arrow-left"></i> Home</a>
+        <div class="balance-badge"><i class="fa-solid fa-coins"></i> <?php echo number_format($current_balance, 2); ?></div>
+    </nav>
 
     <div class="history-container">
-        <h2>📜 My Prediction History</h2>
+        <div class="section-header">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <h2>My Predictions</h2>
+        </div>
 
         <div class="table-responsive">
             <?php if($history_result->num_rows > 0): ?>
                 <table>
                     <thead>
                         <tr>
-                            <th style="text-align: left;">Match Details</th>
-                            <th>My Prediction</th>
-                            <th>Actual Score</th>
+                            <th>Match</th>
+                            <th>Market & Selection</th>
+                            <th>Actual Result</th>
                             <th>Stake</th>
                             <th>Status</th>
                             <th>Return</th>
@@ -102,42 +115,54 @@ $history_result = $stmt_history->get_result();
                     <tbody>
                         <?php while($row = $history_result->fetch_assoc()): ?>
                             <tr>
-                                <td style="text-align: left;">
-                                    <span class="match-name"><?php echo htmlspecialchars($row['team1_name']) . " VS " . htmlspecialchars($row['team2_name']); ?></span>
-                                    <span class="match-date">📅 <?php echo date("d M Y, h:i A", strtotime($row['match_time'])); ?></span>
+                                <td class="match-info">
+                                    <span class="teams"><?php echo htmlspecialchars($row['team1_name']) . " vs " . htmlspecialchars($row['team2_name']); ?></span>
+                                    <span class="date"><i class="fa-regular fa-clock"></i> <?php echo date("d M Y, H:i", strtotime($row['match_time'])); ?></span>
                                 </td>
                                 
                                 <td>
-                                    <span class="score-box"><?php echo $row['predicted_score1'] . " - " . $row['predicted_score2']; ?></span>
+                                    <?php if($row['bet_type'] == 'exact_score'): ?>
+                                        <span class="bet-market">Exact Score</span>
+                                        <span class="bet-selection"><?php echo htmlspecialchars($row['bet_selection']); ?></span>
+                                    <?php else: ?>
+                                        <span class="bet-market">Match Winner</span>
+                                        <span class="bet-selection">
+                                            <?php 
+                                            if($row['bet_selection'] == 'team1') echo htmlspecialchars($row['team1_name']);
+                                            elseif($row['bet_selection'] == 'team2') echo htmlspecialchars($row['team2_name']);
+                                            else echo "Draw";
+                                            ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
                                 
                                 <td>
                                     <?php if($row['match_status'] == 'finished'): ?>
-                                        <span class="score-box"><?php echo $row['team1_score'] . " - " . $row['team2_score']; ?></span>
+                                        <span class="score-badge"><?php echo $row['team1_score'] . " - " . $row['team2_score']; ?></span>
                                     <?php else: ?>
-                                        <span style="color:#64748b; font-size:12px;">Waiting...</span>
+                                        <span style="color:var(--text-muted); font-size:12px;">Pending...</span>
                                     <?php endif; ?>
                                 </td>
                                 
-                                <td class="stake-amount"><?php echo number_format($row['stake_amount'], 2); ?></td>
+                                <td class="stake-amt"><?php echo number_format($row['stake_amount'], 2); ?></td>
                                 
                                 <td>
                                     <?php if($row['status'] == 'won'): ?>
-                                        <span class="badge badge-won">Won</span>
+                                        <span class="status s-won">Won</span>
                                     <?php elseif($row['status'] == 'lost'): ?>
-                                        <span class="badge badge-lost">Lost</span>
+                                        <span class="status s-lost">Lost</span>
                                     <?php else: ?>
-                                        <span class="badge badge-pending">Pending</span>
+                                        <span class="status s-pending">Pending</span>
                                     <?php endif; ?>
                                 </td>
                                 
-                                <td class="points-earned">
+                                <td class="return-amt">
                                     <?php if($row['status'] == 'won'): ?>
-                                        <span class="text-green">+<?php echo number_format($row['points_earned'], 2); ?></span>
+                                        <span class="r-green">+<?php echo number_format($row['points_earned'], 2); ?></span>
                                     <?php elseif($row['status'] == 'lost'): ?>
-                                        <span class="text-red">-<?php echo number_format($row['stake_amount'], 2); ?></span>
+                                        <span class="r-red">-<?php echo number_format($row['stake_amount'], 2); ?></span>
                                     <?php else: ?>
-                                        <span class="text-gray">0.00</span>
+                                        <span class="r-gray">0.00</span>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -145,8 +170,9 @@ $history_result = $stmt_history->get_result();
                     </tbody>
                 </table>
             <?php else: ?>
-                <div style="text-align: center; color: #64748b; padding: 40px;">
-                    You haven't placed any predictions yet. Go to the feed and make your first bet! 🎯
+                <div style="text-align: center; color: var(--text-muted); padding: 50px;">
+                    <i class="fa-solid fa-ghost" style="font-size: 40px; margin-bottom: 15px; color: var(--border-color);"></i>
+                    <p>No predictions placed yet. Get in the game!</p>
                 </div>
             <?php endif; ?>
         </div>
