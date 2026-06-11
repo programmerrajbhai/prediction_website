@@ -3,19 +3,18 @@ session_start();
 require_once '../config.php';
 require_once '../functions.php';
 
-// সিকিউরিটি চেক: শুধুমাত্র অ্যাডমিন এক্সেস পাবে
+// সিকিউরিটি চেক
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    die("<h2 style='color:red; text-align:center; margin-top:50px;'>Access Denied! Admins only.</h2>");
+    die("<h2 style='color:#FF3C3C; text-align:center;'>Access Denied!</h2>");
 }
 
 $msg = '';
 
-// যদি অ্যাডমিন Approve বা Reject বাটনে ক্লিক করে
+// Approve বা Reject লজিক
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
     $deposit_id = intval($_POST['deposit_id']);
     $action = $_POST['action'];
 
-    // প্রথমে চেক করব ডিপোজিটটি সত্যিই 'pending' অবস্থায় আছে কি না
     $check_sql = "SELECT user_id, amount, status FROM deposits WHERE id = ?";
     $check_stmt = $conn->prepare($check_sql);
     $check_stmt->bind_param("i", $deposit_id);
@@ -27,137 +26,229 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         
         if ($deposit['status'] == 'pending') {
             if ($action == 'approve') {
-                // ট্রানজেকশন শুরু: স্ট্যাটাস আপডেট এবং ব্যালেন্স যোগ করা হবে
                 $conn->begin_transaction();
                 try {
-                    // ১. ডিপোজিটের স্ট্যাটাস 'approved' করা
+                    // স্ট্যাটাস আপডেট
                     $upd_dep = "UPDATE deposits SET status = 'approved' WHERE id = ?";
                     $stmt1 = $conn->prepare($upd_dep);
                     $stmt1->bind_param("i", $deposit_id);
                     $stmt1->execute();
 
-                    // ২. ইউজারের একাউন্টে ব্যালেন্স যোগ করা
+                    // ব্যালেন্স যোগ
                     $upd_bal = "UPDATE users SET balance = balance + ? WHERE id = ?";
                     $stmt2 = $conn->prepare($upd_bal);
                     $stmt2->bind_param("di", $deposit['amount'], $deposit['user_id']);
                     $stmt2->execute();
 
                     $conn->commit();
-                    $msg = "<div class='success'>Deposit Approved! Balance added to user.</div>";
+                    $msg = "<div class='success-msg'><i class='fa-solid fa-circle-check'></i> ডিপোজিট অ্যাপ্রুভ করা হয়েছে এবং ইউজারের একাউন্টে কয়েন যোগ হয়েছে!</div>";
                 } catch (Exception $e) {
                     $conn->rollback();
-                    $msg = "<div class='error'>Error updating balance. Action reversed.</div>";
+                    $msg = "<div class='error-msg'>সিস্টেম এরর! ব্যালেন্স আপডেট হয়নি।</div>";
                 }
             } elseif ($action == 'reject') {
-                // রিজেক্ট করলে শুধু স্ট্যাটাস আপডেট হবে, ব্যালেন্স যোগ হবে না
+                // রিজেক্ট করলে শুধু স্ট্যাটাস আপডেট হবে
                 $upd_dep = "UPDATE deposits SET status = 'rejected' WHERE id = ?";
                 $stmt = $conn->prepare($upd_dep);
                 $stmt->bind_param("i", $deposit_id);
                 if ($stmt->execute()) {
-                    $msg = "<div class='success' style='color:#ef4444; border-color:#ef4444;'>Deposit Request Rejected.</div>";
+                    $msg = "<div class='success-msg' style='color:#FF3C3C; border-color:rgba(255,60,60,0.3); background:rgba(255,60,60,0.1);'><i class='fa-solid fa-ban'></i> ডিপোজিট রিকোয়েস্ট রিজেক্ট করা হয়েছে!</div>";
                 }
             }
         } else {
-            $msg = "<div class='error'>This request has already been processed!</div>";
+            $msg = "<div class='error-msg'>এই রিকোয়েস্টটি আগেই প্রসেস করা হয়েছে!</div>";
         }
     }
 }
 
-// ডাটাবেস থেকে সব Pending ডিপোজিট রিকোয়েস্ট নিয়ে আসা
-$pending_sql = "
-    SELECT d.*, u.username 
-    FROM deposits d
-    JOIN users u ON d.user_id = u.id
-    WHERE d.status = 'pending'
-    ORDER BY d.created_at ASC
-";
+// পেন্ডিং ডিপোজিট লিস্ট
+$pending_sql = "SELECT d.*, u.username FROM deposits d JOIN users u ON d.user_id = u.id WHERE d.status = 'pending' ORDER BY d.created_at ASC";
 $pending_requests = $conn->query($pending_sql);
+
+// সাইডবার ব্যাজের জন্য কাউন্ট
+$dep_count = $pending_requests->num_rows;
+$with_count = $conn->query("SELECT id FROM withdrawals WHERE status = 'pending'")->num_rows;
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="bn">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Approve Deposits - Admin</title>
+    <title>ডিপোজিট অ্যাপ্রুভাল - Admin PredX</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+Bengali:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
     <style>
-        body { background-color: #0f172a; color: #f8fafc; font-family: 'Poppins', sans-serif; margin: 0; padding: 20px; }
-        .admin-container { max-width: 900px; margin: 40px auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3); }
-        h2 { text-align: center; color: #3b82f6; border-bottom: 2px solid #334155; padding-bottom: 10px; margin-bottom: 20px; }
+        :root { --bg-main: #0B0E14; --bg-card: #151A22; --bg-glass: rgba(21, 26, 34, 0.85); --accent-admin: #FF3C3C; --text-main: #FFFFFF; --text-muted: #8B94A3; --border-color: #242B38; --sidebar-width: 280px; }
+        body { background-color: var(--bg-main); color: var(--text-main); font-family: 'Noto Sans Bengali', 'Inter', sans-serif; margin: 0; display: flex; min-height: 100vh; overflow-x: hidden; background-image: radial-gradient(circle at 50% -20%, #2a1111, var(--bg-main) 60%); }
         
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #334155; }
-        th { background-color: #0f172a; color: #94a3b8; font-weight: bold; text-transform: uppercase; font-size: 13px; }
-        td { font-size: 14px; }
-        tr:hover { background-color: #334155; }
+        /* Sidebar & Topbar */
+        .sidebar { width: var(--sidebar-width); background: var(--bg-card); border-right: 1px solid var(--border-color); height: 100vh; position: fixed; top: 0; left: 0; z-index: 1000; display: flex; flex-direction: column; transition: 0.3s; }
+        .sidebar-header { padding: 25px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px; }
+        .sidebar-header i { font-size: 28px; color: var(--accent-admin); }
+        .sidebar-header h2 { margin: 0; font-size: 24px; font-weight: 800; font-family: 'Inter'; letter-spacing: -1px; }
+        .nav-menu { list-style: none; padding: 20px 15px; margin: 0; overflow-y: auto; }
+        .nav-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 800; margin: 15px 0 10px 10px; font-family: 'Inter'; }
+        .nav-link { display: flex; align-items: center; gap: 12px; padding: 12px 15px; border-radius: 8px; color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 14px; transition: 0.3s; margin-bottom: 5px;}
+        .nav-link i { width: 20px; text-align: center; font-size: 16px; }
+        .nav-link:hover { background: rgba(255,255,255,0.03); color: var(--text-main); }
+        .nav-link.active { background: rgba(255, 60, 60, 0.1); color: var(--accent-admin); border-left: 3px solid var(--accent-admin); }
+        .badge { background: var(--accent-admin); color: #fff; padding: 2px 8px; border-radius: 20px; font-size: 11px; margin-left: auto; font-weight: 800; }
+        .badge-warning { background: #F59E0B; }
         
-        .amount { color: #fbbf24; font-weight: bold; }
+        .main-content { margin-left: var(--sidebar-width); flex-grow: 1; min-height: 100vh; display: flex; flex-direction: column; width: calc(100% - var(--sidebar-width)); }
+        .topbar { background: var(--bg-glass); backdrop-filter: blur(15px); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100; }
+        .mobile-toggle { display: none; background: none; border: none; color: var(--text-main); font-size: 24px; cursor: pointer; }
+        .logout-btn { padding: 8px 15px; border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 13px; transition: 0.3s; }
+        .logout-btn:hover { background: rgba(255,60,60,0.1); color: var(--accent-admin); border-color: var(--accent-admin); }
+
+        /* Dashboard */
+        .dashboard-container { padding: 30px; }
+        .page-title { font-size: 24px; font-weight: 800; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; }
+        .page-title i { color: #F59E0B; }
         
-        .action-form { display: inline-block; margin: 0; }
-        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; color: white; transition: 0.3s; }
-        .btn-approve { background: #22c55e; }
-        .btn-approve:hover { background: #16a34a; }
-        .btn-reject { background: #ef4444; margin-left: 5px; }
-        .btn-reject:hover { background: #dc2626; }
+        .card { background: var(--bg-card); padding: 25px; border-radius: 16px; border: 1px solid var(--border-color); box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 14px; vertical-align: middle; }
+        th { background: rgba(0,0,0,0.2); color: var(--text-muted); font-weight: 800; text-transform: uppercase; font-size: 12px; }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+        .amount { color: #F59E0B; font-weight: 800; font-family: 'Inter'; font-size: 16px;}
+        .trx-id { font-family: monospace; color: var(--text-muted); background: #0B0E14; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); }
         
-        .success { background: rgba(34, 197, 94, 0.1); color: #22c55e; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 15px; border: 1px solid #22c55e; }
-        .error { background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 15px; border: 1px solid #ef4444; }
-        
-        .back-link { display: inline-block; margin-bottom: 20px; color: #3b82f6; text-decoration: none; font-weight: bold; }
+        .action-btns { display: flex; gap: 8px; }
+        .btn-action { padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; color: white; border: none; cursor: pointer; transition: 0.3s; display: flex; align-items: center; gap: 5px;}
+        .btn-approve { background: rgba(0, 231, 1, 0.1); color: #00E701; border: 1px solid rgba(0, 231, 1, 0.3); }
+        .btn-approve:hover { background: #00E701; color: #000; box-shadow: 0 4px 10px rgba(0, 231, 1, 0.3); }
+        .btn-reject { background: rgba(255, 60, 60, 0.1); color: #FF3C3C; border: 1px solid rgba(255, 60, 60, 0.3); }
+        .btn-reject:hover { background: #FF3C3C; color: white; box-shadow: 0 4px 10px rgba(255, 60, 60, 0.3); }
+
+        .success-msg { background: rgba(0, 231, 1, 0.1); color: #00E701; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-weight: 600; border: 1px solid rgba(0, 231, 1, 0.2); }
+        .error-msg { background: rgba(255, 60, 60, 0.1); color: #FF3C3C; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-weight: 600; border: 1px solid rgba(255, 60, 60, 0.2); }
+
+        @media (max-width: 992px) { .sidebar { left: -300px; } .sidebar.active { left: 0; box-shadow: 10px 0 30px rgba(0,0,0,0.8); } .main-content { margin-left: 0; width: 100%; } .mobile-toggle { display: block; } }
     </style>
 </head>
 <body>
 
-    <div class="admin-container">
-        <a href="../index.php" class="back-link">← Back to Homepage</a>
-        <h2>💰 Manage Pending Deposits</h2>
-        
-        <?php echo $msg; ?>
+    <aside class="sidebar" id="adminSidebar">
+        <div class="sidebar-header"><i class="fa-solid fa-shield-halved"></i><h2>Admin Panel</h2></div>
+        <ul class="nav-menu">
+            <div class="nav-title">মেইন</div>
+            <a href="index.php" class="nav-link"><i class="fa-solid fa-gauge-high"></i> ড্যাশবোর্ড</a>
+            
+            <div class="nav-title">ম্যানেজমেন্ট</div>
+            <a href="manage_matches.php" class="nav-link"><i class="fa-solid fa-earth-americas"></i> ম্যাচ ও দেশ ম্যানেজ</a>
+            <a href="update_result.php" class="nav-link"><i class="fa-solid fa-check-double"></i> রেজাল্ট আপডেট</a>
+            <a href="manage_users.php" class="nav-link"><i class="fa-solid fa-users-gear"></i> ইউজার ম্যানেজমেন্ট</a>
 
-        <?php if($pending_requests->num_rows > 0): ?>
-            <table>
-                <thead>
-                    <tr>
-                        <th>User</th>
-                        <th>Amount</th>
-                        <th>Method</th>
-                        <th>TrxID</th>
-                        <th>Date</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php while($row = $pending_requests->fetch_assoc()): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($row['username']); ?></td>
-                            <td class="amount"><?php echo number_format($row['amount'], 2); ?> Coins</td>
-                            <td><?php echo htmlspecialchars($row['payment_method']); ?></td>
-                            <td style="font-family: monospace; color: #94a3b8;"><?php echo htmlspecialchars($row['transaction_id']); ?></td>
-                            <td style="font-size: 12px; color: #94a3b8;"><?php echo date("d M Y, h:i A", strtotime($row['created_at'])); ?></td>
-                            <td>
-                                <form action="" method="POST" class="action-form">
-                                    <input type="hidden" name="deposit_id" value="<?php echo $row['id']; ?>">
-                                    <input type="hidden" name="action" value="approve">
-                                    <button type="submit" class="btn btn-approve" onclick="return confirm('Are you sure you want to APPROVE this deposit?');">Approve</button>
-                                </form>
-                                
-                                <form action="" method="POST" class="action-form">
-                                    <input type="hidden" name="deposit_id" value="<?php echo $row['id']; ?>">
-                                    <input type="hidden" name="action" value="reject">
-                                    <button type="submit" class="btn btn-reject" onclick="return confirm('Are you sure you want to REJECT this deposit?');">Reject</button>
-                                </form>
-                            </td>
-                        </tr>
-                    <?php endwhile; ?>
-                </tbody>
-            </table>
-        <?php else: ?>
-            <div style="text-align: center; color: #64748b; margin-top: 30px; padding: 20px; background: #0f172a; border-radius: 8px;">
-                No pending deposit requests right now. 💤
+            <div class="nav-title">ফাইন্যান্স (অর্থ)</div>
+            <a href="approve_deposits.php" class="nav-link active">
+                <i class="fa-solid fa-money-bill-transfer"></i> ডিপোজিট রিকোয়েস্ট
+                <?php if($dep_count > 0): ?><span class="badge badge-warning"><?php echo $dep_count; ?></span><?php endif; ?>
+            </a>
+            <a href="approve_withdraws.php" class="nav-link">
+                <i class="fa-solid fa-hand-holding-dollar"></i> উইথড্র রিকোয়েস্ট
+                <?php if($with_count > 0): ?><span class="badge"><?php echo $with_count; ?></span><?php endif; ?>
+            </a>
+        </ul>
+    </aside>
+
+    <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999; display:none;" id="mobileOverlay"></div>
+
+    <div class="main-content">
+        <header class="topbar">
+            <button class="mobile-toggle" id="sidebarToggle"><i class="fa-solid fa-bars"></i></button>
+            <div style="flex-grow: 1;"></div>
+            <a href="../logout.php" class="logout-btn"><i class="fa-solid fa-arrow-right-from-bracket"></i> লগআউট</a>
+        </header>
+
+        <div class="dashboard-container">
+            <div class="page-title"><i class="fa-solid fa-money-bill-transfer"></i> পেন্ডিং ডিপোজিট রিকোয়েস্ট</div>
+            
+            <?php echo $msg; ?>
+
+            <div class="card">
+                <div class="table-responsive">
+                    <?php if($pending_requests->num_rows > 0): ?>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ইউজার</th>
+                                    <th>পরিমাণ (কয়েন)</th>
+                                    <th>পেমেন্ট মেথড</th>
+                                    <th>TrxID (ট্রানজেকশন)</th>
+                                    <th>সময় ও তারিখ</th>
+                                    <th>অ্যাকশন</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php while($row = $pending_requests->fetch_assoc()): ?>
+                                    <tr>
+                                        <td style="font-weight: 800; color:var(--text-main);"><i class="fa-regular fa-user" style="color:var(--text-muted);"></i> <?php echo htmlspecialchars($row['username']); ?></td>
+                                        <td class="amount">+<?php echo number_format($row['amount'], 2); ?></td>
+                                        <td><span style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px; font-size:12px; font-weight:bold;"><?php echo htmlspecialchars($row['payment_method']); ?></span></td>
+                                        <td><span class="trx-id"><?php echo htmlspecialchars($row['transaction_id']); ?></span></td>
+                                        <td style="font-size: 12px; color: var(--text-muted);"><?php echo date("d M Y, h:i A", strtotime($row['created_at'])); ?></td>
+                                        <td>
+                                            <div class="action-btns">
+                                                <form id="approve_form_<?php echo $row['id']; ?>" action="" method="POST" style="margin:0;">
+                                                    <input type="hidden" name="deposit_id" value="<?php echo $row['id']; ?>">
+                                                    <input type="hidden" name="action" value="approve">
+                                                    <button type="button" class="btn-action btn-approve" onclick="confirmAction(<?php echo $row['id']; ?>, 'approve')"><i class="fa-solid fa-check"></i> অ্যাপ্রুভ</button>
+                                                </form>
+                                                
+                                                <form id="reject_form_<?php echo $row['id']; ?>" action="" method="POST" style="margin:0;">
+                                                    <input type="hidden" name="deposit_id" value="<?php echo $row['id']; ?>">
+                                                    <input type="hidden" name="action" value="reject">
+                                                    <button type="button" class="btn-action btn-reject" onclick="confirmAction(<?php echo $row['id']; ?>, 'reject')"><i class="fa-solid fa-xmark"></i> রিজেক্ট</button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div style="text-align: center; color: var(--text-muted); padding: 40px;">
+                            <i class="fa-solid fa-bed" style="font-size: 40px; margin-bottom: 15px; opacity: 0.5;"></i>
+                            <p>এই মুহূর্তে কোনো পেন্ডিং ডিপোজিট রিকোয়েস্ট নেই।</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
-        <?php endif; ?>
-
+        </div>
     </div>
 
+    <script>
+        const toggleBtn = document.getElementById('sidebarToggle');
+        const sidebar = document.getElementById('adminSidebar');
+        const overlay = document.getElementById('mobileOverlay');
+        function toggleSidebar() { sidebar.classList.toggle('active'); overlay.style.display = sidebar.classList.contains('active') ? 'block' : 'none'; }
+        toggleBtn.addEventListener('click', toggleSidebar); overlay.addEventListener('click', toggleSidebar);
+
+        function confirmAction(id, actionType) {
+            let isApprove = actionType === 'approve';
+            let titleText = isApprove ? 'ডিপোজিট অ্যাপ্রুভ করবেন?' : 'ডিপোজিট রিজেক্ট করবেন?';
+            let msgText = isApprove 
+                ? "আপনি কি নিশ্চিত যে ইউজার টাকা পাঠিয়েছে? অ্যাপ্রুভ করলে ইউজারের ব্যালেন্সে কয়েন যোগ হয়ে যাবে।" 
+                : "এই রিকোয়েস্টটি বাতিল করা হবে এবং ইউজারের ব্যালেন্স যোগ হবে না।";
+            let btnColor = isApprove ? '#00E701' : '#FF3C3C';
+            let btnText = isApprove ? 'হ্যাঁ, অ্যাপ্রুভ করুন' : 'হ্যাঁ, রিজেক্ট করুন';
+
+            Swal.fire({
+                title: titleText, text: msgText, icon: 'warning', showCancelButton: true,
+                background: '#151A22', color: '#fff',
+                confirmButtonColor: btnColor, cancelButtonColor: '#334155',
+                confirmButtonText: btnText, cancelButtonText: 'বাতিল'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById(actionType + '_form_' + id).submit();
+                }
+            });
+        }
+    </script>
 </body>
 </html>
