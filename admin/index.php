@@ -19,7 +19,7 @@ if ($hour < 12) {
     $greeting = 'শুভ সন্ধ্যা 🌙';
 }
 
-// ওয়েবসাইটের স্ট্যাটিসটিক্স (Statistics) বের করার জন্য কোয়েরি
+// ওয়েবসাইটের স্ট্যাটিসটিক্স (Statistics)
 $stats = [
     'total_users' => 0,
     'pending_deposits' => 0,
@@ -27,22 +27,23 @@ $stats = [
     'active_matches' => 0
 ];
 
-// ১. টোটাল ইউজার
+// ডেটাবেস কোয়েরি
 $res = $conn->query("SELECT COUNT(id) as count FROM users WHERE role = 'user'");
 if($res) $stats['total_users'] = $res->fetch_assoc()['count'];
 
-// ২. পেন্ডিং ডিপোজিট রিকোয়েস্ট
 $res = $conn->query("SELECT COUNT(id) as count FROM deposits WHERE status = 'pending'");
 if($res) $stats['pending_deposits'] = $res->fetch_assoc()['count'];
 
-// ৩. পেন্ডিং উইথড্র রিকোয়েস্ট
 $res = $conn->query("SELECT COUNT(id) as count FROM withdrawals WHERE status = 'pending'");
 if($res) $stats['pending_withdrawals'] = $res->fetch_assoc()['count'];
 
-// ৪. অ্যাক্টিভ ম্যাচ (Upcoming + Live)
 $res = $conn->query("SELECT COUNT(id) as count FROM matches WHERE status != 'finished' AND status != 'canceled'");
 if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
 
+// সার্ভার ইনফো
+$db_status = ($conn->ping()) ? "Online" : "Offline";
+$php_version = phpversion();
+$timezone = date_default_timezone_get();
 ?>
 
 <!DOCTYPE html>
@@ -50,8 +51,8 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>অ্যাডমিন ড্যাশবোর্ড - PredX</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+Bengali:wght@400;600;800&display=swap" rel="stylesheet">
+    <title>অ্যাডমিন কমান্ড সেন্টার - PredX</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+Bengali:wght@400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
@@ -69,24 +70,19 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
         }
 
         /* --- Animations --- */
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-up { animation: slideUp 0.5s ease forwards; opacity: 0; }
-        .delay-1 { animation-delay: 0.1s; }
-        .delay-2 { animation-delay: 0.2s; }
-        .delay-3 { animation-delay: 0.3s; }
-        .delay-4 { animation-delay: 0.4s; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-up { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+        .delay-1 { animation-delay: 0.1s; } .delay-2 { animation-delay: 0.2s; } 
+        .delay-3 { animation-delay: 0.3s; } .delay-4 { animation-delay: 0.4s; }
 
         /* --- Sidebar --- */
         .sidebar {
             width: var(--sidebar-width); background: var(--bg-card); border-right: 1px solid var(--border-color);
             height: 100vh; position: fixed; top: 0; left: 0; z-index: 1000;
-            display: flex; flex-direction: column; transition: 0.3s ease;
+            display: flex; flex-direction: column; transition: 0.3s ease; box-shadow: 5px 0 20px rgba(0,0,0,0.3);
         }
         .sidebar-header { padding: 25px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px; }
-        .sidebar-header i { font-size: 28px; color: var(--accent-admin); }
+        .sidebar-header i { font-size: 28px; color: var(--accent-admin); filter: drop-shadow(0 0 8px rgba(255,60,60,0.4));}
         .sidebar-header h2 { margin: 0; font-size: 24px; font-weight: 800; font-family: 'Inter', sans-serif; letter-spacing: -1px; }
         
         .nav-menu { list-style: none; padding: 20px 15px; margin: 0; flex-grow: 1; overflow-y: auto; }
@@ -96,9 +92,10 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
             display: flex; align-items: center; gap: 12px; padding: 12px 15px; border-radius: 8px;
             color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 14px; transition: 0.3s;
         }
-        .nav-link i { width: 20px; text-align: center; font-size: 16px; }
-        .nav-link:hover { background: rgba(255,255,255,0.03); color: var(--text-main); }
-        .nav-link.active { background: rgba(255, 60, 60, 0.1); color: var(--accent-admin); border-left: 3px solid var(--accent-admin); }
+        .nav-link i { width: 20px; text-align: center; font-size: 16px; transition: 0.3s;}
+        .nav-link:hover { background: rgba(255,255,255,0.03); color: var(--text-main); transform: translateX(5px);}
+        .nav-link:hover i { color: var(--text-main); }
+        .nav-link.active { background: rgba(255, 60, 60, 0.1); color: var(--accent-admin); border-left: 3px solid var(--accent-admin); box-shadow: inset 0 0 10px rgba(255,60,60,0.05);}
         
         .badge { background: var(--accent-admin); color: #fff; padding: 2px 8px; border-radius: 20px; font-size: 11px; margin-left: auto; font-weight: 800; }
         .badge-warning { background: #F59E0B; }
@@ -116,6 +113,9 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
             border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100;
         }
         .mobile-toggle { display: none; background: none; border: none; color: var(--text-main); font-size: 24px; cursor: pointer; }
+        
+        .live-clock { background: #0B0E14; border: 1px solid var(--border-color); padding: 6px 15px; border-radius: 20px; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 800; color: var(--accent-admin); display: flex; align-items: center; gap: 8px;}
+        
         .admin-profile { display: flex; align-items: center; gap: 15px; }
         .admin-profile .info { text-align: right; }
         .admin-profile .name { display: block; font-weight: 800; font-size: 14px; font-family: 'Inter', sans-serif;}
@@ -125,31 +125,41 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
 
         /* Dashboard Container */
         .dashboard-container { padding: 30px; flex-grow: 1;}
-        .welcome-box { margin-bottom: 30px; }
+        .welcome-box { margin-bottom: 35px; }
         .welcome-box h1 { margin: 0; font-size: 28px; font-weight: 800; color: var(--text-main); }
         .welcome-box p { margin: 5px 0 0; color: var(--text-muted); font-size: 14px; }
 
         /* Stats Grid */
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 40px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 25px; margin-bottom: 40px; }
         .stat-card {
-            background: var(--bg-card); padding: 25px; border-radius: 16px; border: 1px solid var(--border-color);
-            display: flex; align-items: center; gap: 20px; transition: 0.3s; position: relative; overflow: hidden;
+            background: linear-gradient(145deg, var(--bg-card), #0f131a); padding: 25px; border-radius: 16px; border: 1px solid var(--border-color);
+            display: flex; align-items: center; gap: 20px; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative; overflow: hidden;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
-        .stat-card:hover { transform: translateY(-5px); border-color: #3B465A; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-        .stat-icon { width: 60px; height: 60px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 24px; }
-        .stat-info h3 { margin: 0; font-size: 32px; font-weight: 800; font-family: 'Inter', sans-serif; }
+        .stat-card::after { content: ''; position: absolute; top: 0; right: 0; width: 100px; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent); transform: skewX(-20deg) translateX(-150px); transition: 0.5s; }
+        .stat-card:hover::after { transform: skewX(-20deg) translateX(250px); }
+        .stat-card:hover { transform: translateY(-8px); border-color: #3B465A; box-shadow: 0 15px 30px rgba(0,0,0,0.4); }
+        
+        .stat-icon { width: 65px; height: 65px; border-radius: 14px; display: flex; justify-content: center; align-items: center; font-size: 26px; }
+        .stat-info h3 { margin: 0; font-size: 34px; font-weight: 800; font-family: 'Inter', sans-serif; }
         .stat-info p { margin: 0; font-size: 13px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;}
 
         /* Icon Colors */
         .ic-users { background: rgba(0, 123, 255, 0.1); color: #007BFF; border: 1px solid rgba(0, 123, 255, 0.2);}
+        .stat-card:hover .ic-users { box-shadow: 0 0 20px rgba(0, 123, 255, 0.4); }
+        
         .ic-deposit { background: rgba(245, 158, 11, 0.1); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.2);}
+        .stat-card:hover .ic-deposit { box-shadow: 0 0 20px rgba(245, 158, 11, 0.4); }
+        
         .ic-withdraw { background: rgba(0, 231, 1, 0.1); color: #00E701; border: 1px solid rgba(0, 231, 1, 0.2);}
+        .stat-card:hover .ic-withdraw { box-shadow: 0 0 20px rgba(0, 231, 1, 0.4); }
+        
         .ic-match { background: rgba(168, 85, 247, 0.1); color: #A855F7; border: 1px solid rgba(168, 85, 247, 0.2);}
+        .stat-card:hover .ic-match { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4); }
 
         /* Quick Actions Grid */
         .section-title { font-size: 18px; font-weight: 800; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
-        .actions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+        .actions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 40px;}
         .action-card {
             background: linear-gradient(145deg, #151A22, #0F131A); border: 1px solid var(--border-color);
             padding: 20px; border-radius: 12px; text-decoration: none; color: var(--text-main);
@@ -160,8 +170,23 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
         .action-card .left i { font-size: 20px; color: var(--text-muted); transition: 0.3s; width: 25px; text-align: center;}
         .action-card:hover .left i { color: var(--accent-admin); }
 
+        /* Server Status Widget */
+        .server-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .server-box { background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px; display: flex; align-items: center; gap: 15px; }
+        .server-box i { font-size: 24px; color: var(--text-muted); }
+        .server-box .info h4 { margin: 0; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;}
+        .server-box .info p { margin: 5px 0 0; font-size: 16px; font-weight: 800; color: var(--text-main); font-family: 'Inter', sans-serif;}
+        .status-dot { width: 10px; height: 10px; background: #00E701; border-radius: 50%; display: inline-block; margin-right: 5px; box-shadow: 0 0 10px #00E701; animation: pulse 2s infinite; }
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
         /* Footer */
         .admin-footer { text-align: center; padding: 20px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; font-family: 'Inter', sans-serif;}
+
+        /* CSS Fix for Mobile Admin Profile */
+        @media (max-width: 600px) {
+            .admin-profile .info { display: none; }
+        }
 
         /* Responsive */
         @media (max-width: 992px) {
@@ -169,6 +194,8 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
             .sidebar.active { left: 0; box-shadow: 10px 0 30px rgba(0,0,0,0.8); }
             .main-content { margin-left: 0; width: 100%; }
             .mobile-toggle { display: block; }
+            .server-grid { grid-template-columns: 1fr; }
+            .live-clock { display: none; } /* Hide clock on small mobile to save space */
         }
     </style>
 </head>
@@ -215,10 +242,11 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
         
         <header class="topbar">
             <button class="mobile-toggle" id="sidebarToggle"><i class="fa-solid fa-bars"></i></button>
+            <div class="live-clock" title="Server Time"><i class="fa-regular fa-clock"></i> <span id="realTimeClock">Loading...</span></div>
             <div style="flex-grow: 1;"></div>
             
             <div class="admin-profile">
-                <div class="info" style="display: <?php echo (window.innerWidth <= 600) ? 'none' : 'block'; ?>;">
+                <div class="info">
                     <span class="name"><?php echo htmlspecialchars($_SESSION['username']); ?></span>
                     <span class="role">Super Admin</span>
                 </div>
@@ -300,14 +328,42 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
                     <?php endif; ?>
                 </a>
             </div>
+
+            <div class="section-title animate-up delay-4" style="margin-top: 20px;"><i class="fa-solid fa-server" style="color: var(--text-muted);"></i> সিস্টেম হেলথ (System Health)</div>
+            
+            <div class="server-grid animate-up delay-4">
+                <div class="server-box">
+                    <i class="fa-solid fa-database"></i>
+                    <div class="info">
+                        <h4>Database Status</h4>
+                        <p><span class="status-dot"></span> <?php echo $db_status; ?></p>
+                    </div>
+                </div>
+                <div class="server-box">
+                    <i class="fa-brands fa-php"></i>
+                    <div class="info">
+                        <h4>PHP Version</h4>
+                        <p><?php echo $php_version; ?></p>
+                    </div>
+                </div>
+                <div class="server-box">
+                    <i class="fa-solid fa-earth-asia"></i>
+                    <div class="info">
+                        <h4>Server Timezone</h4>
+                        <p><?php echo $timezone; ?></p>
+                    </div>
+                </div>
+            </div>
+
         </div>
         
         <div class="admin-footer">
-            &copy; <?php echo date('Y'); ?> PredX Sportsbook. Admin Portal v2.0
+            &copy; <?php echo date('Y'); ?> PredX Sportsbook. Admin Portal v2.5 (Ultimate)
         </div>
     </div>
 
     <script>
+        // Sidebar Toggle
         const toggleBtn = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('adminSidebar');
         const overlay = document.getElementById('mobileOverlay');
@@ -319,6 +375,24 @@ if($res) $stats['active_matches'] = $res->fetch_assoc()['count'];
 
         toggleBtn.addEventListener('click', toggleSidebar);
         overlay.addEventListener('click', toggleSidebar);
+
+        // Real-Time Digital Clock
+        function updateClock() {
+            const now = new Date();
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            let seconds = now.getSeconds();
+            let ampm = hours >= 12 ? 'PM' : 'AM';
+            
+            hours = hours % 12;
+            hours = hours ? hours : 12; // 0 কে 12 বানাবে
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            seconds = seconds < 10 ? '0' + seconds : seconds;
+            
+            document.getElementById('realTimeClock').innerText = hours + ':' + minutes + ':' + seconds + ' ' + ampm;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
     </script>
 
 </body>

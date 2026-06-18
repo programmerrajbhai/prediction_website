@@ -5,7 +5,7 @@ require_once '../functions.php';
 
 // সিকিউরিটি চেক
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    die("<h2 style='color:red; text-align:center; margin-top:50px;'>Access Denied!</h2>");
+    die("<h2 style='color:#FF3C3C; text-align:center; margin-top:50px;'>Access Denied!</h2>");
 }
 
 $msg = '';
@@ -13,7 +13,6 @@ $msg = '';
 // ==========================================
 // AUTO SCHEMA UPDATER 
 // ==========================================
-// ১. Matches টেবিলের অডস কলাম
 $check_odds = $conn->query("SHOW COLUMNS FROM matches LIKE 'team1_odds'");
 if($check_odds->num_rows == 0) {
     $conn->query("ALTER TABLE matches ADD COLUMN team1_odds DECIMAL(5,2) DEFAULT 2.00 AFTER match_time");
@@ -21,26 +20,25 @@ if($check_odds->num_rows == 0) {
     $conn->query("ALTER TABLE matches ADD COLUMN team2_odds DECIMAL(5,2) DEFAULT 2.00 AFTER draw_odds");
 }
 
-// ২. Teams টেবিলের ফ্ল্যাগ কলাম
 $check_flag = $conn->query("SHOW COLUMNS FROM teams LIKE 'flag'");
 if($check_flag->num_rows == 0) {
     $conn->query("ALTER TABLE teams ADD COLUMN flag VARCHAR(10) DEFAULT '🏳️' AFTER name");
 }
 
 // ==========================================
-// TEAM MANAGEMENT LOGIC (নতুন দেশ/টিম যুক্ত)
+// TEAM MANAGEMENT LOGIC
 // ==========================================
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_team'])) {
     $team_name = sanitizeInput($_POST['team_name'], $conn);
-    $team_flag = sanitizeInput($_POST['team_flag'], $conn); // e.g. 🇧🇩
+    $team_flag = sanitizeInput($_POST['team_flag'], $conn); 
 
     $sql = "INSERT INTO teams (name, flag) VALUES (?, ?)";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("ss", $team_name, $team_flag);
     if ($stmt->execute()) {
-        $msg = "<div class='success-msg'><i class='fa-solid fa-circle-check'></i> নতুন টিম/দেশ সফলভাবে যুক্ত হয়েছে!</div>";
+        $msg = "<div class='success-msg'><i class='fa-solid fa-circle-check'></i> নতুন টিম/দেশ সফলভাবে যুক্ত হয়েছে!</div>";
     } else {
-        $msg = "<div class='error-msg'>সিস্টেম এরর! টিম যুক্ত করা যায়নি।</div>";
+        $msg = "<div class='error-msg'>সিস্টেম এরর! টিম যুক্ত করা যায়নি।</div>";
     }
 }
 
@@ -49,15 +47,17 @@ if (isset($_GET['delete_team_id'])) {
     $del_id = intval($_GET['delete_team_id']);
     try {
         $conn->query("DELETE FROM teams WHERE id = $del_id");
-        $msg = "<div class='success-msg'><i class='fa-solid fa-trash'></i> টিমটি মুছে ফেলা হয়েছে!</div>";
+        $msg = "<div class='success-msg'><i class='fa-solid fa-trash'></i> টিমটি মুছে ফেলা হয়েছে!</div>";
     } catch (Exception $e) {
-        $msg = "<div class='error-msg'><i class='fa-solid fa-triangle-exclamation'></i> এই টিমটি ডিলিট সম্ভব নয় কারণ তারা কোনো ম্যাচে যুক্ত আছে!</div>";
+        $msg = "<div class='error-msg'><i class='fa-solid fa-triangle-exclamation'></i> এই টিমটি ডিলিট সম্ভব নয় কারণ তারা কোনো ম্যাচে যুক্ত আছে!</div>";
     }
 }
 
 // ==========================================
 // MATCH MANAGEMENT LOGIC
 // ==========================================
+
+// Add New Match
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_match'])) {
     $team1_id = intval($_POST['team1']);
     $team2_id = intval($_POST['team2']);
@@ -69,11 +69,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_match'])) {
     if ($team1_id == $team2_id) {
         $msg = "<div class='error-msg'>একই টিম নিজেদের সাথে খেলতে পারে না!</div>";
     } else {
-        $sql = "INSERT INTO matches (team1_id, team2_id, match_time, team1_odds, draw_odds, team2_odds) VALUES (?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO matches (team1_id, team2_id, match_time, team1_odds, draw_odds, team2_odds, status) VALUES (?, ?, ?, ?, ?, ?, 'upcoming')";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("iisddd", $team1_id, $team2_id, $match_time, $team1_odds, $draw_odds, $team2_odds);
-        if ($stmt->execute()) $msg = "<div class='success-msg'><i class='fa-solid fa-circle-check'></i> ম্যাচ সফলভাবে যুক্ত করা হয়েছে!</div>";
-        else $msg = "<div class='error-msg'>সিস্টেম এরর!</div>";
+        if ($stmt->execute()) {
+            $msg = "<div class='success-msg'><i class='fa-solid fa-circle-check'></i> ম্যাচ সফলভাবে যুক্ত করা হয়েছে!</div>";
+        } else {
+            $msg = "<div class='error-msg'>সিস্টেম এরর! ম্যাচ যুক্ত করা যায়নি।</div>";
+        }
     }
 }
 
@@ -86,7 +89,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_match'])) {
     $team1_odds = floatval($_POST['team1_odds']);
     $draw_odds = floatval($_POST['draw_odds']);
     $team2_odds = floatval($_POST['team2_odds']);
-    $status = $_POST['status'];
+    $status = sanitizeInput($_POST['status'], $conn); 
 
     if ($team1_id == $team2_id) {
         $msg = "<div class='error-msg'>একই টিম নিজেদের সাথে খেলতে পারে না!</div>";
@@ -94,9 +97,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_match'])) {
         $sql = "UPDATE matches SET team1_id=?, team2_id=?, match_time=?, team1_odds=?, draw_odds=?, team2_odds=?, status=? WHERE id=?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("iisdddsi", $team1_id, $team2_id, $match_time, $team1_odds, $draw_odds, $team2_odds, $status, $match_id);
-        if ($stmt->execute()) $msg = "<div class='success-msg'><i class='fa-solid fa-circle-check'></i> ম্যাচ সফলভাবে আপডেট করা হয়েছে!</div>";
-        else $msg = "<div class='error-msg'>সিস্টেম এরর!</div>";
+        
+        if ($stmt->execute()) {
+            // রিডাইরেক্ট করে ইউআরএল থেকে edit_id রিমুভ করা হচ্ছে
+            header("Location: manage_matches.php?msg=updated");
+            exit();
+        } else {
+            $msg = "<div class='error-msg'>সিস্টেম এরর! আপডেট ফেইল করেছে।</div>";
+        }
     }
+}
+
+if (isset($_GET['msg']) && $_GET['msg'] == 'updated') {
+    $msg = "<div class='success-msg'><i class='fa-solid fa-circle-check'></i> ম্যাচ সফলভাবে আপডেট করা হয়েছে!</div>";
 }
 
 // Delete Match
@@ -106,7 +119,7 @@ if (isset($_GET['delete_match_id'])) {
         $conn->query("DELETE FROM matches WHERE id = $del_id");
         $msg = "<div class='success-msg'><i class='fa-solid fa-trash'></i> ম্যাচটি মুছে ফেলা হয়েছে!</div>";
     } catch (Exception $e) {
-        $msg = "<div class='error-msg'><i class='fa-solid fa-triangle-exclamation'></i> ম্যাচটি ডিলিট সম্ভব নয় কারণ ইউজাররা বেট করেছে! স্ট্যাটাস Canceled করুন।</div>";
+        $msg = "<div class='error-msg'><i class='fa-solid fa-triangle-exclamation'></i> ম্যাচটি ডিলিট সম্ভব নয়! স্ট্যাটাস 'Canceled' করুন।</div>";
     }
 }
 
@@ -155,7 +168,7 @@ if (isset($_GET['edit_id'])) {
             background-image: radial-gradient(circle at 50% -20%, #2a1111, var(--bg-main) 60%);
         }
 
-        /* --- Sidebar & Topbar (Standard Admin Theme) --- */
+        /* --- Sidebar & Topbar --- */
         .sidebar { width: var(--sidebar-width); background: var(--bg-card); border-right: 1px solid var(--border-color); height: 100vh; position: fixed; top: 0; left: 0; z-index: 1000; display: flex; flex-direction: column; transition: 0.3s ease; }
         .sidebar-header { padding: 25px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px; }
         .sidebar-header i { font-size: 28px; color: var(--accent-admin); }
@@ -178,12 +191,12 @@ if (isset($_GET['edit_id'])) {
         .page-title { font-size: 24px; font-weight: 800; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
         .page-title i { color: var(--accent-admin); }
 
-        /* Tabs System */
+        /* Tabs System (FIXED) */
         .admin-tabs { display: flex; gap: 15px; margin-bottom: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; overflow-x: auto; }
         .admin-tab { padding: 10px 20px; font-size: 15px; font-weight: 800; color: var(--text-muted); cursor: pointer; border-radius: 8px; transition: 0.3s; white-space: nowrap; }
         .admin-tab.active { background: rgba(255, 60, 60, 0.1); color: var(--accent-admin); box-shadow: inset 0 0 10px rgba(255, 60, 60, 0.2); }
         .tab-content { display: none; animation: fadeIn 0.4s ease; }
-        .tab-content.active { display: block; }
+        .tab-content.active { display: block; } /* This is what was missing! */
         @keyframes fadeIn { from{opacity:0; transform:translateY(5px);} to{opacity:1; transform:translateY(0);} }
 
         /* Cards & Forms */
@@ -213,11 +226,14 @@ if (isset($_GET['edit_id'])) {
         .bg-upcoming { background: rgba(139, 148, 163, 0.1); color: var(--text-muted); border: 1px solid rgba(139, 148, 163, 0.3); }
         .bg-live { background: rgba(255, 60, 60, 0.1); color: #FF3C3C; border: 1px solid rgba(255, 60, 60, 0.3); }
         .bg-finished { background: rgba(0, 231, 1, 0.1); color: #00E701; border: 1px solid rgba(0, 231, 1, 0.3); }
+        .bg-canceled { background: rgba(245, 158, 11, 0.1); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.3); }
 
         .action-btns { display: flex; gap: 8px; }
         .a-btn { padding: 6px 10px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: bold; transition: 0.3s; cursor: pointer; border: none; }
         .a-edit { background: rgba(0, 123, 255, 0.1); color: #007BFF; border: 1px solid rgba(0, 123, 255, 0.3); }
+        .a-edit:hover { background: #007BFF; color: white; }
         .a-delete { background: rgba(255, 60, 60, 0.1); color: #FF3C3C; border: 1px solid rgba(255, 60, 60, 0.3); }
+        .a-delete:hover { background: #FF3C3C; color: white; }
         
         .success-msg { background: rgba(0, 231, 1, 0.1); color: #00E701; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: 600; border: 1px solid rgba(0, 231, 1, 0.2); }
         .error-msg { background: rgba(255, 60, 60, 0.1); color: #FF3C3C; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: 600; border: 1px solid rgba(255, 60, 60, 0.2); }
@@ -262,16 +278,19 @@ if (isset($_GET['edit_id'])) {
             <?php echo $msg; ?>
 
             <div class="admin-tabs">
-                <div class="admin-tab <?php echo !$edit_match ? 'active' : ''; ?>" onclick="switchTab('matches', this)"><i class="fa-solid fa-calendar-plus"></i> ম্যাচ ম্যানেজমেন্ট</div>
+                <div class="admin-tab active" onclick="switchTab('matches', this)"><i class="fa-solid fa-calendar-plus"></i> ম্যাচ ম্যানেজমেন্ট</div>
                 <div class="admin-tab" onclick="switchTab('teams', this)"><i class="fa-solid fa-flag"></i> টিম / দেশ যুক্ত করুন</div>
             </div>
 
-            <div id="tab_matches" class="tab-content <?php echo !$edit_match ? 'active' : ''; ?>">
+            <div id="tab_matches" class="tab-content active">
                 <div class="content-grid">
                     <div class="card">
                         <div class="card-header"><?php echo $edit_match ? '✏️ ম্যাচ এডিট' : '➕ নতুন ম্যাচ শিডিউল'; ?></div>
-                        <form action="manage_matches.php<?php echo $edit_match ? '?edit_id='.$edit_id : ''; ?>" method="POST">
-                            <?php if($edit_match): ?><input type="hidden" name="match_id" value="<?php echo $edit_match['id']; ?>"><?php endif; ?>
+                        
+                        <form action="manage_matches.php" method="POST">
+                            <?php if($edit_match): ?>
+                                <input type="hidden" name="match_id" value="<?php echo $edit_match['id']; ?>">
+                            <?php endif; ?>
 
                             <div class="input-group">
                                 <label>টিম ১ (Home Team)</label>
@@ -325,10 +344,10 @@ if (isset($_GET['edit_id'])) {
                                 <div class="input-group">
                                     <label>স্ট্যাটাস</label>
                                     <select name="status" required>
-                                        <option value="upcoming" <?php if($edit_match['status']=='upcoming') echo 'selected'; ?>>Upcoming</option>
-                                        <option value="live" <?php if($edit_match['status']=='live') echo 'selected'; ?>>Live</option>
-                                        <option value="finished" <?php if($edit_match['status']=='finished') echo 'selected'; ?>>Finished</option>
-                                        <option value="canceled" <?php if($edit_match['status']=='canceled') echo 'selected'; ?>>Canceled</option>
+                                        <option value="upcoming" <?php if($edit_match['status']=='upcoming') echo 'selected'; ?>>Upcoming (আসছে)</option>
+                                        <option value="live" <?php if($edit_match['status']=='live') echo 'selected'; ?>>Live (লাইভ)</option>
+                                        <option value="finished" <?php if($edit_match['status']=='finished') echo 'selected'; ?>>Finished (সমাপ্ত)</option>
+                                        <option value="canceled" <?php if($edit_match['status']=='canceled') echo 'selected'; ?>>Canceled (বাতিল)</option>
                                     </select>
                                 </div>
                                 <button type="submit" name="update_match" class="btn">আপডেট করুন</button>

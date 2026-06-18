@@ -179,4 +179,5 @@ $history_result = $stmt_history->get_result();
     </div>
 
 </body>
+<?php include 'bottom_nav.php'; ?>
 </html>

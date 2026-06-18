@@ -208,4 +208,5 @@ $current_balance = $bal_stmt->get_result()->fetch_assoc()['balance'];
     </script>
 
 </body>
+<?php include 'bottom_nav.php'; ?>
 </html>
